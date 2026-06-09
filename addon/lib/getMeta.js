@@ -1,3 +1,4 @@
+const { fetchAccurateTrailer } = require('../utils/gemini-trailer');
 require("dotenv").config();
 const Utils = require("../utils/parseProps");
 const moviedb = require("./getTmdb");
