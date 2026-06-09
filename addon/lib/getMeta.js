@@ -425,6 +425,26 @@ async function getMeta(type, language, stremioId, config = {}, userUUID, include
         meta.id = `tun_${meta.id}`;
       }
     }
+        // --- CUSTOM GEMINI TRAILER OVERRIDE ---
+    if (meta && (meta.type === 'movie' || meta.type === 'series')) {
+      try {
+        const accurateYtId = await fetchAccurateTrailer({
+          title: meta.name,
+          year: meta.year || 2026,
+          primaryLang: 'Telugu',
+          secondaryLang: 'English',
+          originalLang: meta.language || 'Original'
+        });
+
+        if (accurateYtId) {
+          meta.trailer = { source: "youtube", id: accurateYtId };
+          meta.trailers = [{ source: accurateYtId, type: "Trailer" }];
+        }
+      } catch (e) {
+        console.error("Custom Trailer Error:", e);
+      }
+    }
+    // --- END CUSTOM OVERRIDE ---
     return { meta };
   } catch (error) {
     logger.error(`Failed to get meta for ${type} with ID ${stremioId}:`, error);
