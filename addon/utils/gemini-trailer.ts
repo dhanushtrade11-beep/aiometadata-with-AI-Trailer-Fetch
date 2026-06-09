@@ -43,7 +43,8 @@ RULES:
       })
     });
 
-    const data = await response.json();
+    // The fix: We tell TypeScript the data is of type 'any'
+    const data: any = await response.json();
     const ytId = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
     if (ytId && ytId !== 'NULL' && ytId.length === 11) {
