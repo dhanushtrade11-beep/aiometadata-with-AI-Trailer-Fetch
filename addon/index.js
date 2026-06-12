@@ -6379,6 +6379,168 @@ function canUiRestart() {
   }
 }
 
+// ─── Manual Overrides API ────────────────────────────────────────────────────
+// These endpoints allow admins to manually override trailer links and metadata art
+// for any content item when the AI picks wrong data or TMDB is missing/incorrect.
+
+// Ensure the overrides table exists (lazy migration)
+async function ensureOverridesTable() {
+  try {
+    if (database.type === 'sqlite') {
+      await database.runQuery(`
+        CREATE TABLE IF NOT EXISTS manual_overrides (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          stremio_id TEXT NOT NULL,
+          content_type TEXT NOT NULL DEFAULT 'movie',
+          title TEXT,
+          year INTEGER,
+          trailer_url TEXT,
+          poster_url TEXT,
+          background_url TEXT,
+          logo_url TEXT,
+          thumbnail_url TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(stremio_id)
+        )
+      `);
+    } else {
+      await database.runQuery(`
+        CREATE TABLE IF NOT EXISTS manual_overrides (
+          id SERIAL PRIMARY KEY,
+          stremio_id VARCHAR(255) NOT NULL UNIQUE,
+          content_type VARCHAR(50) NOT NULL DEFAULT 'movie',
+          title TEXT,
+          year INTEGER,
+          trailer_url TEXT,
+          poster_url TEXT,
+          background_url TEXT,
+          logo_url TEXT,
+          thumbnail_url TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+  } catch (e) {
+    consola.warn('[Overrides] Table creation warning:', e.message);
+  }
+}
+ensureOverridesTable();
+
+// GET /api/dashboard/overrides - list all overrides
+addon.get('/api/dashboard/overrides', requireDashboardAdmin, async (req, res) => {
+  try {
+    const rows = await database.allQuery(
+      'SELECT * FROM manual_overrides ORDER BY updated_at DESC'
+    );
+    res.json({ overrides: rows });
+  } catch (e) {
+    consola.error('[Overrides] GET error:', e.message);
+    res.status(500).json({ error: 'Failed to fetch overrides' });
+  }
+});
+
+// GET /api/dashboard/overrides/:stremioId - get a single override
+addon.get('/api/dashboard/overrides/:stremioId', requireDashboardAdmin, async (req, res) => {
+  try {
+    const { stremioId } = req.params;
+    const row = await database.getQuery(
+      'SELECT * FROM manual_overrides WHERE stremio_id = ?',
+      [stremioId]
+    );
+    if (!row) return res.status(404).json({ error: 'Override not found' });
+    res.json({ override: row });
+  } catch (e) {
+    consola.error('[Overrides] GET single error:', e.message);
+    res.status(500).json({ error: 'Failed to fetch override' });
+  }
+});
+
+// POST /api/dashboard/overrides - create or update an override
+addon.post('/api/dashboard/overrides', requireDashboardAdmin, async (req, res) => {
+  try {
+    const { stremio_id, content_type, title, year, trailer_url, poster_url, background_url, logo_url, thumbnail_url } = req.body;
+    if (!stremio_id) return res.status(400).json({ error: 'stremio_id is required' });
+
+    const now = new Date().toISOString();
+    const existing = await database.getQuery(
+      'SELECT id FROM manual_overrides WHERE stremio_id = ?', [stremio_id]
+    );
+
+    if (existing) {
+      await database.runQuery(
+        `UPDATE manual_overrides SET content_type=?, title=?, year=?, trailer_url=?, poster_url=?, background_url=?, logo_url=?, thumbnail_url=?, updated_at=? WHERE stremio_id=?`,
+        [content_type || 'movie', title || null, year || null, trailer_url || null, poster_url || null, background_url || null, logo_url || null, thumbnail_url || null, now, stremio_id]
+      );
+    } else {
+      await database.runQuery(
+        `INSERT INTO manual_overrides (stremio_id, content_type, title, year, trailer_url, poster_url, background_url, logo_url, thumbnail_url, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [stremio_id, content_type || 'movie', title || null, year || null, trailer_url || null, poster_url || null, background_url || null, logo_url || null, thumbnail_url || null, now, now]
+      );
+    }
+
+    // Bust the meta cache for this item so the override is applied immediately
+    try {
+      if (redis) {
+        const keys = await redis.keys(`meta:*${stremio_id}*`);
+        if (keys.length) await redis.del(keys);
+      }
+    } catch (_) { /* non-critical */ }
+
+    const updated = await database.getQuery(
+      'SELECT * FROM manual_overrides WHERE stremio_id = ?', [stremio_id]
+    );
+    res.json({ success: true, override: updated });
+  } catch (e) {
+    consola.error('[Overrides] POST error:', e.message);
+    res.status(500).json({ error: 'Failed to save override' });
+  }
+});
+
+// DELETE /api/dashboard/overrides/:stremioId - remove an override
+addon.delete('/api/dashboard/overrides/:stremioId', requireDashboardAdmin, async (req, res) => {
+  try {
+    const { stremioId } = req.params;
+    await database.runQuery('DELETE FROM manual_overrides WHERE stremio_id = ?', [stremioId]);
+    res.json({ success: true });
+  } catch (e) {
+    consola.error('[Overrides] DELETE error:', e.message);
+    res.status(500).json({ error: 'Failed to delete override' });
+  }
+});
+
+// GET /api/dashboard/overrides/search - search TMDB for a movie/series to get its ID
+addon.get('/api/dashboard/overrides/tmdb/search', requireDashboardAdmin, async (req, res) => {
+  try {
+    const { query, type = 'movie' } = req.query;
+    if (!query) return res.status(400).json({ error: 'query is required' });
+
+    const tmdbApiKey = process.env.TMDB_API_KEY;
+    if (!tmdbApiKey) return res.status(500).json({ error: 'TMDB API key not configured' });
+
+    const endpoint = type === 'series' ? 'tv' : 'movie';
+    const url = `https://api.themoviedb.org/3/search/${endpoint}?api_key=${tmdbApiKey}&query=${encodeURIComponent(query)}&page=1`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    const results = (data.results || []).slice(0, 10).map(item => ({
+      tmdb_id: item.id,
+      title: item.title || item.name,
+      year: parseInt((item.release_date || item.first_air_date || '').split('-')[0]) || null,
+      poster: item.poster_path ? `https://image.tmdb.org/t/p/w185${item.poster_path}` : null,
+      overview: (item.overview || '').slice(0, 120),
+    }));
+
+    res.json({ results });
+  } catch (e) {
+    consola.error('[Overrides] TMDB search error:', e.message);
+    res.status(500).json({ error: 'TMDB search failed' });
+  }
+});
+
+// ─── End Manual Overrides API ─────────────────────────────────────────────────
+
 const SERVER_BOOT_ID = require('crypto').randomBytes(8).toString('hex');
 
 addon.get('/api/dashboard/health', (req, res) => {

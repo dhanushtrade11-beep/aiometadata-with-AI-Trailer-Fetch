@@ -8,6 +8,7 @@ const tvmaze = require("./tvmaze");
 const { getImdbRating } = require("./getImdbRating");
 const { to3LetterCode } = require('./language-map');
 const jikan = require('./mal');
+const database = require('./database');
 const TVDB_IMAGE_BASE = 'https://artworks.thetvdb.com';
 const idMapper = require('./id-mapper');
 const { resolveAnidbEpisodeFromTvdbEpisode } = require('./anime-list-mapper');
@@ -453,6 +454,35 @@ async function getMeta(type, language, stremioId, config = {}, userUUID, include
       }
     }
     // --- END CUSTOM OVERRIDE ---
+
+    // --- APPLY MANUAL DASHBOARD OVERRIDES ---
+    try {
+      const override = await database.getQuery(
+        'SELECT * FROM manual_overrides WHERE stremio_id = ?', [stremioId]
+      );
+      if (override && meta) {
+        // Trailer override
+        if (override.trailer_url) {
+          // Accept full YouTube URLs or bare video IDs
+          let ytId = override.trailer_url;
+          const ytMatch = override.trailer_url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+          if (ytMatch) ytId = ytMatch[1];
+          if (ytId.length === 11) {
+            meta.trailer = { source: 'youtube', id: ytId };
+            meta.trailers = [{ source: ytId, type: 'Trailer' }];
+          }
+        }
+        // Art overrides
+        if (override.poster_url)     meta.poster      = override.poster_url;
+        if (override.background_url) meta.background  = override.background_url;
+        if (override.logo_url)       meta.logo        = override.logo_url;
+        if (override.thumbnail_url)  meta.thumbnail   = override.thumbnail_url;
+      }
+    } catch (e) {
+      console.error('[Meta] Manual override apply error:', e.message);
+    }
+    // --- END MANUAL DASHBOARD OVERRIDES ---
+
     return { meta };
   } catch (error) {
     logger.error(`Failed to get meta for ${type} with ID ${stremioId}:`, error);

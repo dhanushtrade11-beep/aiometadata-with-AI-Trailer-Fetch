@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // Types
 // ============================================================================
 
-export type DashboardTab = 'overview' | 'analytics' | 'content' | 'performance' | 'system' | 'operations' | 'users' | 'logs' | 'settings';
+export type DashboardTab = 'overview' | 'analytics' | 'content' | 'performance' | 'system' | 'operations' | 'users' | 'logs' | 'settings' | 'overrides';
 
 interface DashboardQueryOptions {
   activeTab?: DashboardTab;
@@ -43,6 +43,7 @@ export const DASHBOARD_QUERY_KEYS = {
   users: ['dashboard', 'users'] as const,
   logs: ['dashboard', 'logs'] as const,
   settings: ['dashboard', 'settings'] as const,
+  overrides: ['dashboard', 'overrides'] as const,
   all: ['dashboard'] as const,
 } as const;
 
@@ -900,3 +901,122 @@ export function useResetSetting() {
   });
 }
 
+
+// ============================================================================
+// Manual Overrides Hooks
+// ============================================================================
+
+export interface ManualOverride {
+  id?: number;
+  stremio_id: string;
+  content_type: string;
+  title?: string | null;
+  year?: number | null;
+  trailer_url?: string | null;
+  poster_url?: string | null;
+  background_url?: string | null;
+  logo_url?: string | null;
+  thumbnail_url?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TmdbSearchResult {
+  tmdb_id: number;
+  title: string;
+  year: number | null;
+  poster: string | null;
+  overview: string;
+}
+
+export function useOverrides(options: DashboardQueryOptions = {}) {
+  const { adminKey, logout, isAdmin } = useAdmin();
+  const getHeaders = useApiHeaders();
+
+  return useQuery({
+    queryKey: DASHBOARD_QUERY_KEYS.overrides,
+    queryFn: async () => {
+      const response = await fetch('/api/dashboard/overrides', {
+        headers: getHeaders(),
+      });
+      if (response.status === 401) { logout(); throw new Error('UNAUTHORIZED'); }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json() as Promise<{ overrides: ManualOverride[] }>;
+    },
+    enabled: isAdmin && options.enabled !== false,
+    staleTime: 30_000,
+  });
+}
+
+export function useSaveOverride() {
+  const { adminKey, logout } = useAdmin();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (override: ManualOverride) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (adminKey) headers['x-admin-key'] = adminKey;
+
+      const response = await fetch('/api/dashboard/overrides', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(override),
+      });
+
+      if (response.status === 401) { logout(); throw new Error('Session expired.'); }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error((data as any).error || `HTTP ${response.status}`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.overrides });
+    },
+  });
+}
+
+export function useDeleteOverride() {
+  const { adminKey, logout } = useAdmin();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (stremioId: string) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (adminKey) headers['x-admin-key'] = adminKey;
+
+      const response = await fetch(`/api/dashboard/overrides/${encodeURIComponent(stremioId)}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (response.status === 401) { logout(); throw new Error('Session expired.'); }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.overrides });
+    },
+  });
+}
+
+export function useTmdbSearch() {
+  const { adminKey } = useAdmin();
+
+  return useMutation({
+    mutationFn: async ({ query, type }: { query: string; type: 'movie' | 'series' }) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (adminKey) headers['x-admin-key'] = adminKey;
+
+      const response = await fetch(
+        `/api/dashboard/overrides/tmdb/search?query=${encodeURIComponent(query)}&type=${type}`,
+        { headers }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error((data as any).error || `HTTP ${response.status}`);
+      }
+      return response.json() as Promise<{ results: TmdbSearchResult[] }>;
+    },
+  });
+}

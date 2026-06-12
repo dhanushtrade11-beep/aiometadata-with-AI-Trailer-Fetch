@@ -45,6 +45,7 @@ import { DashboardPerformance } from "./DashboardPerformance";
 import { DashboardOperations } from "./DashboardOperations";
 import { DashboardUsers } from "./DashboardUsers";
 import { DashboardSettings } from "./DashboardSettings";
+import { DashboardOverridesManager } from "./DashboardOverridesManager";
 
 
 
@@ -576,6 +577,11 @@ export function Dashboard() {
           />
         ),
       },
+      {
+        value: "overrides",
+        title: "Overrides",
+        component: <DashboardOverridesManager />,
+      },
     );
   }
 
@@ -705,6 +711,7 @@ export function Dashboard() {
                   { value: "users", label: "Users" },
                   { value: "logs", label: "Logs" },
                   { value: "settings", label: "Settings" },
+                  { value: "overrides", label: "Overrides" },
                 ] : []),
               ].map((tab) => (
                 <TabsTrigger
@@ -806,6 +813,9 @@ export function Dashboard() {
               <DashboardSettings
                 data={dashboardData.settings}
               />
+            </TabsContent>
+            <TabsContent value="overrides" className="mt-0">
+              <DashboardOverridesManager />
             </TabsContent>
           </>
         )}
