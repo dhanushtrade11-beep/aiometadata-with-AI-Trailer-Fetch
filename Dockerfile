@@ -35,6 +35,9 @@ COPY scripts ./scripts
 COPY resources ./resources
 
 
+# Generate metadata.json required by the server.
+RUN pnpm run metadata
+
 # Build the project.
 RUN pnpm run build
 
