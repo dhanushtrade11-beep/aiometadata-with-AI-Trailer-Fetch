@@ -1,0 +1,26 @@
+services:
+  aiostreams:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aiostreams
+    restart: unless-stopped
+    ports:
+      - "${AIOSTREAMS_PORT:-3000}:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./data/aiostreams:/app/data
+
+  aiometadata:
+    build:
+      context: ./aiometadata
+      dockerfile: Dockerfile
+    container_name: aiometadata
+    restart: unless-stopped
+    ports:
+      - "${AIOMETADATA_PORT:-3232}:3232"
+    env_file:
+      - aiometadata/.env.example
+    volumes:
+      - ./data/aiometadata:/app/data

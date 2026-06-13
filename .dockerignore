@@ -1,10 +1,7 @@
-node_modules
-npm-debug.log
-Dockerfile
-.git
-.gitignore
+**/node_modules/
+**/dist
+**/out
+**/.next
+**/data
 .env
-dist
-addon/data
-.next
-.cache
+.git

@@ -1,391 +1,238 @@
-# ![AIOMETADATA](https://github.com/cedya77/aiometadata/blob/dev/public/logo.png) AIOMetadata: The Ultimate Stremio Metadata Addon
+<p align="center">
+    <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/selfhst/icons/png/aiostreams-light.png">
+          <img alt="AIOStreams Logo" src="https://cdn.jsdelivr.net/gh/selfhst/icons/png/aiostreams.png" width=256 height=256>
+    </picture>
+</p>
 
-**AIOMetadata** is a next-generation, power-user-focused metadata addon for [Stremio](https://www.stremio.com/). It aggregates and enriches movie, series, and anime metadata from multiple sources (TMDB, TVDB, MyAnimeList, AniList, IMDb, TVmaze, Fanart.tv, MDBList, and more), giving you full control over catalog sources, artwork, and search.
+<h1 align="center">AIOStreams</h1>
 
----
+<p align="center">
+  <strong>One addon to rule them all.</strong>
+  <br />
+  AIOStreams consolidates multiple Stremio addons and debrid services - including its own suite of built-in addons - into a single, highly customisable super-addon.
+</p>
 
-## 🚀 Features
+<p align="center">
+    <a href="https://github.com/Viren070/AIOStreams/actions/workflows/deploy-docker.yml"> 
+        <img src="https://img.shields.io/github/actions/workflow/status/viren070/aiostreams/deploy-docker.yml?style=for-the-badge&logo=github" alt="Build Status">
+    </a>
+    <a href="https://github.com/Viren070/AIOStreams/releases/latest">
+        <img src="https://img.shields.io/github/v/release/viren070/aiostreams?style=for-the-badge&logo=github" alt="Latest Release">
+    </a>
+    <a href="https://github.com/Viren070/AIOStreams/stargazers">
+        <img src="https://img.shields.io/github/stars/Viren070/AIOStreams?style=for-the-badge&logo=github " alt="GitHub Stars">
+    </a>
+    <a href="https://github.com/sponsors/Viren070">
+        <img src="https://img.shields.io/github/sponsors/viren070?style=for-the-badge&logo=githubsponsors" alt="GitHub Sponsors">
+    </a>
+    <a href="https://hub.docker.com/r/viren070/aiostreams">
+        <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry-stats.viren070.me%2Fapi%2Fdh%3Aviren070%2Faiostreams%2Cghcr%3Aviren070%2Faiostreams%2Faiostreams&query=%24.total_downloads_formatted&logo=docker&label=pulls&style=for-the-badge" alt="Docker Pulls">
+    </a>
+    <a href="https://discord.viren070.me">
+        <img src="https://img.shields.io/discord/1225024298490662974?style=for-the-badge&logo=discord&color=7289DA" alt="Discord Server">
+    </a>
 
-- **Multi-Source Metadata**: Choose your preferred provider for each type (movie, series, anime) — TMDB, TVDB, MAL, AniList, IMDb, TVmaze, etc.
-- **Rich Artwork**: High-quality posters, backgrounds, and logos from TMDB, TVDB, Fanart.tv, AniList, and more, with language-aware selection and fallback.
-- **Anime Power**: Deep anime support with MAL, AniList, Kitsu, AniDB, and TVDB/IMDb mapping, including studio, genre, decade, and schedule catalogs.
-- **Custom Catalogs**: Add, reorder, and delete catalogs (including MDBList, streaming, and custom lists) in a sortable UI.
-- **Streaming Catalogs**: Integrate streaming provider catalogs (Netflix, Disney+, etc.) with region and monetization filters.
-- **Dynamic Search**: Enable/disable search engines per type (movie, series, anime) and use AI-powered search (Gemini) if desired.
-- **User Config & Passwords**: Secure, per-user configuration with password and optional addon password protection. Trusted UUIDs for seamless re-login.
-- **Global & Self-Healing Caching**: Redis-backed, ETag-aware, and self-healing cache for fast, reliable metadata and catalog responses.
-- **Advanced ID Mapping**: Robust mapping between all major ID systems (MAL, TMDB, TVDB, IMDb, AniList, AniDB, Kitsu, TVmaze).
-- **Modern UI**: Intuitive React/Next.js configuration interface with drag-and-drop, tooltips, and instant feedback.
-
----
-
-## 🛠️ Installation
-
-### 1. Hosted Instance
-
-Visit your hosted instance's `/configure` page.  
-Configure your catalogs, providers, and preferences.  
-Save your config and install the generated Stremio addon URL.
-
-### 2. Self-Hosting (Docker Compose)
-
-```yaml
-services:
-  aiometadata:
-    image: ghcr.io/cedya77/aiometadata:latest
-    container_name: aiometadata
-    restart: unless-stopped
-    ports:
-      - "3232:3232"  # Remove this if using Traefik
-    # expose:  # Uncomment if using Traefik
-    #   - 3232
-    env_file:
-      - .env
-    # labels:  # Optional: Remove if not using Traefik
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.aiometadata.rule=Host(`${AIOMETADATA_HOSTNAME?}`)"
-    #   - "traefik.http.routers.aiometadata.entrypoints=websecure"
-    #   - "traefik.http.routers.aiometadata.tls.certresolver=letsencrypt"
-    #   - "traefik.http.routers.aiometadata.middlewares=authelia@docker"
-    #   - "traefik.http.services.aiometadata.loadbalancer.server.port=3232"
-    volumes:
-      - ${DOCKER_DATA_DIR}/aiometadata/data:/app/addon/data
-    depends_on:
-      aiometadata_redis:
-        condition: service_healthy
-    tty: true
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3232/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  aiometadata_redis:
-    image: redis:latest
-    container_name: aiometadata_redis
-    restart: unless-stopped
-    volumes:
-      - ${DOCKER_DATA_DIR}/aiometadata/cache:/data
-    command: redis-server --appendonly yes --save 3600 1
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  #aiometadata_postgres:
-  #  image: postgres:latest
-  #  container_name: aiometadata_postgres
-  #  restart: unless-stopped
-  #  environment:
-  #    - POSTGRES_DB=aiometadata
-  #    - POSTGRES_USER=postgres
-  #    - POSTGRES_PASSWORD=password
-  #  volumes:
-  #    - ${DOCKER_DATA_DIR}/aiometadata/postgres:/var/lib/postgresql/data
-  #  healthcheck:
-  #    test: ["CMD-SHELL", "pg_isready -U postgres -d aiometadata"]
-  #    interval: 10s
-  #    timeout: 5s
-  #    retries: 5
-```
-
-Create a `.env` file with your API keys and settings as shown in [.env.example](.env.example) 
-
-Then run:
-```bash
-docker compose up -d
-```
-
-### 3. Poster Reverse Proxy Cache (Optional)
-
-Cache poster images locally using an nginx reverse proxy. Eliminates upstream latency on repeated requests and, combined with comprehensive cache warming, serves posters instantly from disk. Includes a `/stats` endpoint for monitoring cache size and image count.
-
-Add a `poster-cache` service alongside your aiometadata container:
-
-```yaml
-  poster-cache:
-    image: nginx:alpine
-    container_name: poster-cache
-    restart: unless-stopped
-    volumes:
-      - ./poster-cache-nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./poster-cache-stats.sh:/stats.sh:ro
-      - ./poster-cache-purge-handler.sh:/purge-handler.sh:ro
-      - ${DOCKER_DATA_DIR}/poster-cache:/var/cache/nginx
-    entrypoint: ["/bin/sh", "-c", "chown -R nginx:nginx /var/cache/nginx && nc -lk -p 9888 -e /purge-handler.sh & /stats.sh & exec nginx -g 'daemon off;'"]
-    expose:
-      - "8888"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.poster-cache.rule=Host(`poster-cache.example.com`)"
-      - "traefik.http.routers.poster-cache.entrypoints=websecure"
-      - "traefik.http.routers.poster-cache.tls.certresolver=letsencrypt"
-      - "traefik.http.services.poster-cache.loadbalancer.server.port=8888"
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8888/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
-Save the following as `poster-cache-nginx.conf` next to your `docker-compose.yml`:
-
-```nginx
-user nginx;
-worker_processes auto;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    # Cache storage on disk — adjust max_size to suit available space
-    proxy_cache_path /var/cache/nginx/posters
-                     levels=1:2
-                     keys_zone=poster_cache:10m
-                     max_size=10g
-                     inactive=30d
-                     use_temp_path=off;
-
-    # Restore double-slash after scheme when a reverse proxy (e.g. Traefik)
-    # collapses "https://" to "https:/".
-    # Input:  /https:/api.example.com/path  ->  https://api.example.com/path
-    # Input:  /https://api.example.com/path ->  https://api.example.com/path
-    map $request_uri $upstream_url {
-        ~^/(https?):/([^/].*)$  $1://$2;
-        ~^/(https?://.*)$       $1;
-        default                 "";
-    }
-
-    # Extract scheme + host from the upstream URL for resolving relative redirects
-    map $upstream_url $upstream_origin {
-        ~^(https?://[^/]+)  $1;
-        default             "";
-    }
-
-    log_format cache '$remote_addr - [$time_local] "$request" $status '
-                     '$body_bytes_sent $upstream_cache_status';
-    access_log /var/log/nginx/access.log cache;
-
-    server {
-        listen 8888;
-
-        location = /health {
-            access_log off;
-            return 200 'ok';
-        }
-
-        location = /stats {
-            access_log off;
-            default_type application/json;
-            alias /tmp/cache-stats.json;
-        }
-
-        location = /purge {
-            access_log off;
-            default_type application/json;
-            proxy_pass http://127.0.0.1:9888;
-        }
-
-        location / {
-            resolver 127.0.0.11 valid=30s ipv6=off;
-
-            if ($upstream_url = "") {
-                return 400;
-            }
-
-            proxy_pass $upstream_url;
-            proxy_ssl_server_name on;
-
-            # Rewrite relative upstream redirects into absolute URLs.
-            # Some upstreams (e.g. openposterdb) return relative 302 Location headers
-            # like "/c/abc/path" which the client would resolve against the proxy host.
-            # This rewrites them to point to the actual upstream origin.
-            #   e.g. Location: /c/abc/path → Location: https://openposterdb.com/c/abc/path
-            proxy_redirect / $upstream_origin/;
-
-            proxy_cache poster_cache;
-            proxy_cache_key $upstream_url;
-            proxy_cache_valid 200 30d;
-            proxy_ignore_headers Cache-Control Expires Vary;
-            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-            proxy_cache_lock on;
-
-            add_header X-Cache-Status $upstream_cache_status;
-
-            proxy_set_header Host $proxy_host;
-            proxy_set_header Accept-Encoding "";
-        }
-    }
-}
-```
-
-Save the following as `poster-cache-stats.sh` next to your `docker-compose.yml`:
-
-```sh
-#!/bin/sh
-# Periodically writes cache stats to a JSON file served by nginx
-CACHE_DIR="/var/cache/nginx/posters"
-STATS_FILE="/tmp/cache-stats.json"
-MAX_SIZE="${POSTER_CACHE_MAX_SIZE:-10g}"
-INACTIVE="${POSTER_CACHE_INACTIVE:-30d}"
-
-while true; do
-  if [ -d "$CACHE_DIR" ]; then
-    size_bytes=$(du -sb "$CACHE_DIR" 2>/dev/null | cut -f1)
-    file_count=$(find "$CACHE_DIR" -type f 2>/dev/null | wc -l)
-    size_human=$(awk "BEGIN {
-      b = ${size_bytes:-0};
-      if (b >= 1000000000) printf \"%.1fG\", b/1000000000;
-      else if (b >= 1000000) printf \"%.1fM\", b/1000000;
-      else if (b >= 1000) printf \"%.1fK\", b/1000;
-      else printf \"%dB\", b;
-    }")
-  else
-    size_bytes=0
-    size_human="0B"
-    file_count=0
-  fi
-
-  # Check for purge flag
-  if [ -f /tmp/purge-cache ]; then
-    rm -f /tmp/purge-cache
-    rm -rf "$CACHE_DIR"
-    mkdir -p "$CACHE_DIR"
-    chown nginx:nginx "$CACHE_DIR"
-    size_bytes=0
-    size_human="0B"
-    file_count=0
-  fi
-
-  cat > "$STATS_FILE" <<EOF
-{"cached_images":${file_count},"disk_usage":"${size_human}","disk_usage_bytes":${size_bytes},"max_size":"${MAX_SIZE}","inactive":"${INACTIVE}"}
-EOF
-  sleep 30
-done
-```
-
-Save the following as `poster-cache-purge-handler.sh` next to your `docker-compose.yml`:
-
-```sh
-#!/bin/sh
-# HTTP handler for /purge — called by nc -lk -e
-read -r method path _
-# Consume remaining headers
-while read -r line; do
-  line=$(printf '%s' "$line" | tr -d '\r\n')
-  [ -z "$line" ] && break
-done
-
-touch /tmp/purge-cache
-BODY='{"success":true,"message":"cache purge scheduled"}'
-printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" ${#BODY} "$BODY"
-```
-
-Make both scripts executable:
-
-```bash
-chmod +x poster-cache-stats.sh poster-cache-purge-handler.sh
-```
-
-Then set these environment variables on the aiometadata service:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DOCKER_DATA_DIR` | Base directory for persistent Docker data | `/opt/docker/data` |
-| `POSTER_PROXY_PREFIX_URL` | Public HTTPS URL for the proxy (used in responses so Stremio fetches through it) | `https://poster-cache.example.com` |
-| `POSTER_WARMUP_URL` | Internal Docker URL for server-side warming (optional, falls back to `POSTER_PROXY_PREFIX_URL`) | `http://poster-cache:8888` |
-| `POSTER_WARMUP_DELAY_MS` | Delay between poster warm batches during warming (default `50`) | `50` |
-| `POSTER_WARMUP_CONCURRENCY` | Number of concurrent poster warm requests per batch (default `1`) | `5` |
-
-If you're not using Traefik, remove the labels, expose port 8888 directly, and set `POSTER_PROXY_PREFIX_URL` to wherever your proxy is publicly accessible.
+</p>
 
 ---
 
-## ⚙️ Configuration
+## ✨ What is AIOStreams?
 
-- **Catalogs**: Add, remove, and reorder catalogs (TMDB, TVDB, MAL, AniList, MDBList, streaming, etc.).
-- **Providers**: Set preferred metadata and artwork provider for each type.
-- **Search**: Enable/disable search engines per type; enable AI search with Gemini API key.
-- **Integrations**: Connect MDBList and more for personal lists.
-- **Security**: Set user and (optional) addon password for config protection.
+AIOStreams was created to give users ultimate control over their Stremio experience. Instead of juggling multiple addons with different configurations and limitations, AIOStreams acts as a central hub. It fetches results from all your configured sources, then deduplicates, filters, sorts, and formats them according to _your_ rules before presenting them in a single, clean list.
 
-All configuration is managed via the `/configure` UI and saved per-user (UUID) in the database.
+Whether you're a casual user who wants a simple, unified stream list or a power user who wants to fine-tune every aspect of your results, AIOStreams has you covered.
 
----
-
-## 🔌 API & Endpoints
-
-- `/stremio/:userUUID/:compressedConfig/manifest.json` — Stremio manifest (per-user config)
-- `/api/config/save` — Save user config (POST)
-- `/api/config/load/:userUUID` — Load user config (POST)
-- `/api/config/update/:userUUID` — Update user config (PUT)
-- `/api/config/is-trusted/:uuid` — Check if UUID is trusted (GET)
-- `/api/cache/*` — Cache health and admin endpoints
-- `/poster/:type/:id` — Poster proxy with fallback and RPDB support
-- `/resize-image` — Image resize proxy
-- `/api/image/blur` — Image blur proxy
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/ba15f9f6-b8d4-4060-9b1f-00adeb0d1d9b" alt="AIOStreams in action" width="850" />
+</p>
 
 ---
 
-## 🧩 Supported Providers
+## 🚀 Key Features
 
-- **Movies/Series**: TMDB, TVDB, IMDb, TVmaze
-- **Anime**: MyAnimeList (MAL), AniList, Kitsu, AniDB, TVDB, IMDb
-- **Artwork**: TMDB, TVDB, Fanart.tv, AniList, RPDB
-- **Personal Lists**: MDBList, MAL, AniList
-- **Streaming**: Netflix, Disney+, Amazon, and more (via TMDB watch providers)
+### 🔌 All Your Addons, One Interface
+
+Add any Stremio addon you already use - Torrentio, Comet, MediaFusion, and many more - alongside AIOStreams' own built-in addons. All results flow through a single, unified pipeline.
+
+- **Addon Marketplace**: Browse and enable 80+ community addons directly from the configuration page. AIOStreams automatically applies your debrid API keys to compatible addons, so you configure your credentials once and they work everywhere.
+- **Custom Addon Support**: Add _any_ Stremio addon by URL. If it works in Stremio, it works here.
+- **Automatic Updates**: Addon manifests are generated dynamically, so you always get the latest addon updates without reconfiguring anything.
+- **Full Stremio Support**: Streams, catalogs, metadata, subtitles, and addon catalogs are all supported.
+- **Addon Categorisation**: Categorise your addons to keep things neat and organised.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/4af785d1-dec3-438b-b62c-5aaf6d3d62c5" alt="Addon Marketplace" width="850"/>
+
+  <img width="850"  alt="image" src="https://github.com/user-attachments/assets/fc85afc5-1367-40e0-9018-40002dd0878f" />
+
+</p>
+
+### 🧩 Built-in Addons
+
+AIOStreams ships with a suite of its own addons - search engines and integrations that are hosted alongside AIOStreams itself and available exclusively to your instance. They're configured and used just like any other addon in the marketplace.
+
+> [!NOTE]
+> Built-in addons that search for torrents require a debrid service. Usenet results can be streamed directly via [NZBDav](https://github.com/nzbdav-dev/nzbdav) or [AltMount](https://github.com/javi11/altmount), or through TorBox (Pro plan). All built-in addons support anime and Kitsu/MAL catalogs.
+
+The built-in addons include:
+
+| Addon               | Description                                                      |
+| ------------------- | ---------------------------------------------------------------- |
+| **Stremio GDrive**  | Stream files directly from your Google Drive.                    |
+| **TorBox Search**   | Search TorBox's index with more options than the official addon. |
+| **Knaben**          | Proxy search across The Pirate Bay, 1337x, Nyaa.si, and more.    |
+| **Zilean**          | Scrape a Zilean DMM hashlist instance.                           |
+| **AnimeTosho**      | Mirror of most Nyaa.si and TokyoTosho anime releases.            |
+| **Torrent Galaxy**  | Search Torrent Galaxy for results.                               |
+| **Easynews Search** | Text-based search of Easynews' Usenet index.                     |
+| **SeaDex**          | Best-release database for anime (community curated).             |
+| **NekoBT**          | Anime results via nekoBT.                                        |
+| **EZTV**            | TV show torrent search via EZTV.                                 |
+| **Bitmagnet**       | Connect your self-hosted Bitmagnet DHT crawler.                  |
+| **Jackett**         | Connect your Jackett instance by URL and API key.                |
+| **Prowlarr**        | Connect your Prowlarr instance by URL and API key.               |
+| **NZBHydra2**       | Connect your NZBHydra2 instance to search Usenet indexers.       |
+| **Newznab**         | Directly configure any Newznab-compatible Usenet indexer.        |
+| **Torznab**         | Configure any Torznab API to search torrent results.             |
+| **Library**         | Browse and stream content from your debrid/usenet library        |
+
+### 🌐 Debrid & Usenet Service Support
+
+AIOStreams supports all major debrid and Usenet services, including:
+
+**Debrid**: Real-Debrid, AllDebrid, Debrid-Link, Premiumize, TorBox, EasyDebrid, PikPak, Offcloud, Seedr, put.io, and more.
+
+**Usenet**: Easynews, NzbDAV, AltMount, Stremio NNTP, StremThru Newz.
+
+Services are configured once in the **Services** tab and automatically applied to every compatible addon in your configuration.
+
+<p align="center">
+    <img width="1500" alt="image" src="https://github.com/user-attachments/assets/fbf40e7d-b303-4bef-a43e-5ce3d26684bb" />
+</p>
+
+### 🔬 Advanced Filtering Engine
+
+Because every addon is routed through AIOStreams, you only configure your filters **once** and they apply universally.
+
+- **Property Filters**: Include, require, or exclude results by resolution (240p–2160p), quality (CAM through BluRay REMUX), encode (AVC, HEVC, AV1...), HDR/Dolby Vision tags, audio format (Atmos, TrueHD, DTS...), audio channels, stream type (debrid, usenet, P2P...), and language.
+- **Size, Bitrate & Seeder Filters**: Set minimum and maximum bounds for file size, bitrate, seeder count, and result age.
+- **Cached/Uncached Control**: Filter by cache status globally or scoped to specific services or addons.
+- **Keyword Filters**: Match or exclude results by simple keyword against the filename.
+- **Regex Filters**: Full regular expression matching against filenames, indexer names, and release groups.
+- **Stream Expression Language (SEL)**: Write dynamic conditional rules using a purpose-built expression language.
+  - _Example_: Only remove 720p results when more than five 1080p results are already present: `count(resolution(streams, '1080p')) > 5 ? resolution(streams, '720p') : false`
+  - Full reference: [docs.aiostreams.viren070.me/reference/stream-expressions](https://docs.aiostreams.viren070.me/reference/stream-expressions)
+- **Accurate Matching**: Uses various metadata sources to precisely verify titles, years, and episode numbers - so you only ever see the right content. Can be applied per-addon or per-content type.
+- **Smart Deduplication**: Detect duplicate streams by filename, infohash, or a "smart detect" hash computed from a configurable set of file attributes (size, resolution, encode, release group, etc.).
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/4bab4c2c-a47a-482b-a623-079fc792dc33" alt="Filtering Configuration" width="750"/>
+</p>
+
+### 📊 Powerful Sorting
+
+Build your ideal sort order from a wide range of criteria - resolution, quality, encode, language, audio, visual tags, stream type, cache status, seeders, size, bitrate, service, addon, age, and more. Sorting is:
+
+- **Fully Customisable**: Stack any number of criteria in any order.
+- **Content-Aware**: Define separate sort orders for movies, series, and anime, and separate rules for cached vs. uncached results.
+- **Expression/Regex Scored**: Use Stream Expressions / Regex Patterns to compute a numeric score per stream and sort by that score for maximum precision.
+- **Preferred Lists**: Define ranked lists of preferred values (e.g. prefer `HDR10+` over `HDR` over `SDR`) and have the sorter use those rankings automatically.
+
+Full guide: [docs.aiostreams.viren070.me/guides/scored-sorting](https://docs.aiostreams.viren070.me/guides/scored-sorting)
+
+<p align="center">
+    <img width="920" alt="image" src="https://github.com/user-attachments/assets/88eb560d-d95d-4964-93ed-7b6b82c861b9" />
+</p>
+
+### 🎨 Custom Stream Formatter
+
+Design exactly how stream information appears in Stremio using a powerful templating system.
+
+- **Live Preview**: See exactly what your streams will look like as you build your template.
+- **Built-in Formats**: Start from one of the included presets - some are built in, others are inspired by popular addons and community contributions.
+- **Full Customisation**: The template system gives you access to every parsed stream attribute. See the [Custom Formatter reference](https://docs.aiostreams.viren070.me/reference/custom-formatter) for the full variable and function list.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/44ba6860-6778-4f0f-a192-e3f28df6b893" alt="Custom Formatter" width="900"/>
+</p>
+
+### 🗃️ Unified Catalog Management
+
+Take control of your Stremio home page from one place.
+
+- **Rename**: Rename any catalog's title or type to whatever you want.
+- **Reorder & Disable**: Drag catalogs into your preferred order or hide the ones you don't use.
+- **Shuffle**: Discover new content by shuffling the results of any catalog. You can persist the shuffle for a set period.
+- **Enhanced Posters**: Automatically upgrade catalog posters with high-quality artwork from supported poster services (e.g. [RPDB](https://rpdb.net/)) - even for addons that don't natively support it.
+- **Merged Catalogs**: Combine results from multiple catalogs into one unified catalog.
+
+<p align="center"> 
+    <img width="900"  alt="image" src="https://github.com/user-attachments/assets/24d2ea64-f742-48f0-8552-bb8a62f61a75" />
+</p>
+
+### 🛡️ Proxy Support
+
+- **Built-in Proxy**: AIOStreams includes its own proxy for forwarding streams.
+- **External Proxy**: Integrate with [MediaFlow Proxy](https://github.com/mhdzumair/mediaflow-proxy) or [StremThru](https://github.com/MunifTanjim/stremthru) by providing your instance URL and credentials.
+- **Bypass IP Restrictions**: Essential for debrid services that restrict simultaneous connections from different IP addresses.
+- **NZB Proxying**: The built-in proxy can also forward NZB download requests for the Newznab built-in addon.
+- **Outgoing Request Proxy**: Route AIOStreams' own requests to upstream addons through an HTTP/SOCKS5 proxy - useful when your server's IP is blocked by an upstream service.
 
 ---
 
-## 🧑‍💻 Development
+## 🚀 Getting Started
 
-```bash
-# Backend
-npm run dev:server
+1. **Choose how to run it**
+   - **Public Instance**: Use a [community-hosted instance](https://docs.aiostreams.viren070.me/getting-started/public-instances) - free, no setup required.
+   - **Self-Host**: Run it yourself with Docker for full control and no limits.
+   - **Managed Hosting**: Use a managed AIOStreams instance via **[ElfHosted](https://store.elfhosted.com/product/aiostreams/?utm_source=github&utm_medium=readme&utm_campaign=aiostreams-readme)** (ElfHosted are a project sponsor).
 
-# Frontend
-npm run dev
-```
+2. **Configure your addon**
+   - Open the `/stremio/configure` page of your instance in a browser.
+   - Add your debrid or Usenet credentials, install addons from the marketplace, and set up your filters, sorting, and formatting.
 
-- Edit `/addon` for backend, `/configure` for frontend.
-- Uses Redis for caching, SQLite/PostgreSQL for config storage.
+3. **Create your user**
+   - On the **Save & Install** page, enter a password to protect your configuration
 
----
+4. **Install the addon**
+   - Use the Installation Options provided to install the addon to whatever app you are using.
 
-## 🤝 Contributing
-
-We welcome community contributions! However, to keep review times manageable, we have specific guidelines. **Please read the [CONTRIBUTING.md](docs/contributing.md) guide before opening issues or pull requests.**
-
----
-
-## 📄 License
-
-GPL-3.0 — see [LICENSE](LICENSE).
+For full setup and configuration instructions, see the **[documentation](https://docs.aiostreams.viren070.me)**.
 
 ---
 
-## 🙏 Credits
+## ❤️ Support the Project
 
-- [Stremio](https://www.stremio.com/)
-- [TMDB](https://www.themoviedb.org/)
-- [TVDB](https://thetvdb.com/)
-- [MyAnimeList](https://myanimelist.net/)
-- [AniList](https://anilist.co/)
-- [Fanart.tv](https://fanart.tv/)
-- [MDBList](https://mdblist.com/)
-- [RPDB](https://rpdb.net/)
+AIOStreams is a passion project developed and maintained for free. If you find it useful, please consider:
 
-**Special thanks to [MrCanelas](https://github.com/mrcanelas), the original developer of the TMDB Addon for Stremio, whose work inspired and laid the groundwork for this project.**
+- ⭐ **[Star the repository](https://github.com/Viren070/AIOStreams)** on GitHub.
+- ⭐ **[Star the addon](https://stremio-addons.net/addons/aiostreams)** in the Stremio Community Catalog.
+- 🤝 **Contribute**: Report issues, suggest features, or submit pull requests.
+- ☕ **Donate**:
+  - **[Ko-fi](https://ko-fi.com/viren070)**
+  - **[GitHub Sponsors](https://github.com/sponsors/Viren070)**
+
+---
+
+<h2 align="center">⭐ Star History</h2>
+
+<p align="center">
+  <img src="https://api.star-history.com/svg?repos=Viren070/AIOStreams&type=Date" href="https://www.star-history.com/#Viren070/AIOStreams&Date" alt="Star History" width="750"/>
+</p>
 
 ---
 
 ## ⚠️ Disclaimer
 
-This addon aggregates metadata from third-party sources. Data accuracy and availability are not guaranteed.
+AIOStreams is a tool for aggregating and managing data from other Stremio addons. It does not host, store, or distribute any content. The developer does not endorse or promote access to copyrighted content. Users are solely responsible for complying with all applicable laws and the terms of service of any addons or services they use with AIOStreams.
 
+## 🙏 Credits
 
+This project wouldn't be possible without the foundational work of many others in the community, especially those who develop the addons that AIOStreams integrates. Special thanks to the developers of all integrated addons, the creators of [mhdzumair/mediaflow-proxy](https://github.com/mhdzumair/mediaflow-proxy) and [MunifTanjim/stremthru](https://github.com/MunifTanjim/stremthru), and the open-source projects that inspired parts of AIOStreams' design:
 
- 
+- UI components and issue templates adapted with permission from [5rahim/seanime](https://github.com/5rahim/seanime)
+- [NzbDAV](https://github.com/nzbdav-dev/nzbdav) & [AltMount](https://github.com/javi11/altmount) integration inspired by [Sanket9225/UsenetStreamer](https://github.com/Sanket9225/UsenetStreamer/)
+- [sleeyax/stremio-easynews-addon](https://github.com/sleeyax/stremio-easynews-addon) for the project's initial structure
+- Custom formatter system inspired by and adapted from [diced/zipline](https://github.com/diced/zipline)
+- Stream Expression Language powered by [silentmatt/expr-eval](https://github.com/silentmatt/expr-eval)
