@@ -1,14 +1,18 @@
 {
-  "extends": "./tsconfig.base.json",
+  "files": [],
   "references": [
-    {
-      "path": "./packages/server"
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./configure/src/*"]
     },
-    {
-      "path": "./packages/core"
-    },
-    {
-      "path": "./packages/frontend"
-    }
-  ]
+    "noImplicitAny": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "noUnusedLocals": false,
+    "strictNullChecks": false
+  }
 }

@@ -1,39 +1,33 @@
-name: Feature Request
-description: Suggest an idea for the project
-title: 'feature request: '
-labels:
-  - feature request
+name: 💡 Feature Request
+description: Suggest an idea, new provider, or enhancement for AIOMetadata.
+labels: ["enhancement", "triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        We love new ideas! Please keep in mind that we maintain this project in our free time, so we may not be able to implement everything.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear and concise description of what the problem is. Ex. I'm always frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: A clear and concise description of what you want to happen. Are you proposing a new metadata provider, a frontend UI change, etc?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Describe alternatives you've considered
+      description: A clear and concise description of any alternative solutions or features you've considered.
   - type: checkboxes
-    id: '1'
+    id: pr
     attributes:
-      label: Checklist
-      description: >-
-        Please check the following before submitting a feature request. If you
-        are unable to check all the boxes, please provide more information in the
-        description.
+      label: Would you be willing to submit a pull request?
       options:
-        - label: >-
-            I checked that this feature has not been requested before
-          required: true
-        - label: >-
-            I checked that this feature is not in the "Not planned" list
-          required: true
-        - label: >-
-            This feature will benefit the majority of users
-  - type: textarea
-    id: '2'
-    attributes:
-      label: Problem Description / Use Case
-      description: >-
-        Provide a detailed description of the problem you are facing or the use case you have in mind.
-    validations:
-      required: true
-  - type: textarea
-    id: '3'
-    attributes:
-      label: Proposed Solution
-      description: >-
-        Provide a detailed description of the solution you'd like to see. If you have any ideas on how to implement the feature, please include them here.
-    validations:
-      required: true
+        - label: Yes, I can help implement this!

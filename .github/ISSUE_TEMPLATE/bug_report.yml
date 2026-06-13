@@ -1,107 +1,52 @@
-name: Bug report
-description: Report a bug you encountered
-title: 'bug: '
-labels:
-  - bug
+name: 🐛 Bug Report
+description: File a bug report for an unexpected problem with the addon or configure UI.
+labels: ["bug", "triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! 
+        Before you submit, please make sure you have checked the existing issues to ensure it hasn't been reported already.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: When I click...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this bug?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
   - type: dropdown
-    id: 'deployment'
+    id: environment
     attributes:
-      label: Deployment Method
-      description: How are you hosting the addon?
+      label: Environment
+      description: How are you running AIOMetadata?
       options:
-        - Public ElfHosted Instance
-        - Private ElfHosted Instance
-        - Cloudflare Workers
-        - VPS
-        - Other, specify at description
-    validations:
-      required: true
-  - type: input
-    id: 'addonVersion'
-    attributes:
-      label: Addon Version
-      description: What version of the addon are you using, or what was the commit that your deployment was built off of?
-      placeholder: v1.13.8
-    validations:
-      required: true
-  - type: dropdown
-    id: 'bugArea'
-    attributes:
-      label: Bug Area
-      description: Select what area of the addon this issue affects
-      options:
-        - Deploying
-        - Configuring
-        - Installing
-        - Obtaining streams.
-        - Playback
-    validations:
-      required: true
-  - type: input
-    id: 'deviceInfo'
-    attributes: 
-      label: Device/Browser/OS/Stremio Version
-      description: Details about the device this issue occurs on. Leave blank if not applicable (e.g. error within addon)
-      placeholder: Windows on Stremio 5 Beta
-  - type: textarea
-    id: 'bugDescription'
-    attributes:
-      label: Bug Description / Steps to Reproduce
-      description: Precisely describe the bug you encountered and the steps to reproduce it. Avoid vague descriptions. Include relevant details - such as if you were using MediaFlow. 
+        - Self-hosted (Docker)
+        - Public hosted instance
+        - Local Development
     validations:
       required: true
   - type: textarea
-    id: 'expectedBehaviour'
+    id: logs
     attributes:
-      label: Expected Behavior
-      description: Describe what you expected to happen.
-    validations:
-      required: true
-  - type: textarea
-    id: 'configExport'
-    attributes:
-      label: Configuration Export
-      description: Provide an export of your configuration with credentials excluded (make sure to double check it has nothing sensitive in it like custom addon URLs or overriden URLs etc.
-    validations:
-      required: true
-  - type: textarea
-    id: 'screenshots'
-    attributes:
-      label: Screenshots
-      description: If applicable, add screenshots of the bug and your configuration.
-  - type: checkboxes
-    id: 'debuggingChecklist'
-    attributes:
-      label: Debugging Checklist
-      description: Confirm you have included at least some of the following debugging information. If you haven't, please do so before submitting the issue.
-      options:
-        - label: >-
-            If applicable, I have included server logs 
-          required: false
-        - label: >-
-            If applicable, I have included MediaFlow logs
-          required: false
-  - type: checkboxes
-    id: 'issueChecklist'
-    attributes:
-      label: Issue Checklist
-      description: Confirm that you have understood and followed these requirements
-      options:
-        - label: >-
-            I have written a short but informative title that clearly describes the issue.
-          required: true
-        - label: >- 
-            I have given clear and descriptive steps to reproduce the issue.
-          required: true
-        - label: >- 
-            I have checked open and closed issues and confirmed that this is not a duplicate of another issue.
-          required: true
-        - label: >- 
-            I have filled out all of the requested information adequately. 
-          required: true
-        - label: >- 
-            I am using the [latest version](https://github.com/Viren070/AIOStreams/releases/latest). 
-          required: true
-            
-
+      label: Server Logs / Browser Console Errors
+      description: Please paste any relevant logs from the Docker container or browser console.
+      render: shell
