@@ -325,38 +325,43 @@ function extractYTId(text: string): string | null {
   return null;
 }
 
-// ─── Redis cache ──────────────────────────────────────────────────────────────
-const CACHE_TTL = 30 * 24 * 60 * 60;
-const CACHE_PFX = 'trailer:v10:';
-let _redis: any = null;
+// ─── In-memory trailer cache with 30-day TTL (zero Redis usage) ──────────────
+// Trailer IDs are tiny (~11 bytes each). Storing them in-memory means:
+//   - Zero Redis storage used (your 25 MB free tier stays free for metadata)
+//   - Faster lookups (no network round-trip to Redis)
+//   - Entries expire after 30 days automatically
 
-async function getRedis(): Promise<any> {
-  if (_redis?.status === 'ready') return _redis;
-  const url = process.env.REDIS_URL;
-  if (!url) return null;
-  try {
-    const { createClient } = require('redis');
-    _redis = createClient({ url });
-    _redis.on('error', () => {});
-    await _redis.connect();
-    return _redis;
-  } catch { return null; }
+const TRAILER_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+
+interface CacheEntry {
+  value: string | null;
+  expiresAt: number;
 }
 
-async function cacheGet(k: string): Promise<string | null | undefined> {
-  try {
-    const r = await getRedis(); if (!r) return undefined;
-    const v = await r.get(`${CACHE_PFX}${k}`);
-    if (v === null) return undefined;
-    return v === 'NULL' ? null : v;
-  } catch { return undefined; }
+const _memCache = new Map<string, CacheEntry>();
+
+function cacheGet(k: string): Promise<string | null | undefined> {
+  const entry = _memCache.get(k);
+  if (!entry) return Promise.resolve(undefined);
+  if (Date.now() > entry.expiresAt) {
+    _memCache.delete(k); // expired — treat as cache miss
+    return Promise.resolve(undefined);
+  }
+  return Promise.resolve(entry.value);
 }
 
-async function cacheSet(k: string, v: string | null): Promise<void> {
-  try {
-    const r = await getRedis(); if (!r) return;
-    await r.set(`${CACHE_PFX}${k}`, v ?? 'NULL', { EX: CACHE_TTL });
-  } catch {}
+function cacheSet(k: string, v: string | null): Promise<void> {
+  _memCache.set(k, { value: v, expiresAt: Date.now() + TRAILER_TTL_MS });
+  return Promise.resolve();
+}
+
+/**
+ * Exported cache-only lookup — returns the cached value if present and not expired,
+ * or undefined if not yet fetched / expired. Never triggers a YouTube/Groq fetch.
+ * Used by index.js to check instantly before deciding to fire-and-forget.
+ */
+export async function cacheGetOnly(k: string): Promise<string | null | undefined> {
+  return cacheGet(k);
 }
 
 // ─── Groq queue (30 RPM → 1 per 2.5s) ───────────────────────────────────────

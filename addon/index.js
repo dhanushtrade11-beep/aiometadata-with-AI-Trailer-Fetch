@@ -3982,6 +3982,64 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
     const httpCacheOpts = { cacheMaxAge: 0, staleRevalidate: 5 * 60 }; // No cache for regular catalogs, 5 min stale-while-revalidate
     respond(req, res, responseData, httpCacheOpts);
 
+    // ── Pre-warm metadata + trailers for all catalog items in background ───────
+    // Runs AFTER respond() — user sees catalog instantly.
+    // By the time they click any movie, BOTH metadata and trailer are already cached.
+    if (responseData?.metas?.length > 0) {
+      (async () => {
+        try {
+          const { fetchAccurateTrailer, cacheGetOnly } = require('./utils/gemini-trailer');
+          const { reconstructMetaFromComponents } = require('./lib/getCache');
+          const metas = responseData.metas.slice(0, 20); // top 20 visible items
+          const metaType = type || 'movie';
+          const language = config.language || 'en-US';
+
+          for (const meta of metas) {
+            if (!meta?.id || !meta?.name) continue;
+
+            // 1) Check if metadata already cached — if not, pre-fetch it
+            try {
+              const cached = await reconstructMetaFromComponents(userUUID, meta.id, undefined, {}, metaType, true, false);
+              if (!cached || !cached.meta) {
+                // Cache miss — fetch full metadata in background (stores to Redis automatically)
+                getMeta(metaType, language, meta.id, config, userUUID, true, true)
+                  .then(result => {
+                    if (result?.meta) {
+                      cacheWrapMetaSmart(
+                        userUUID, meta.id,
+                        async () => result,
+                        undefined, cacheOptions, metaType, true, false
+                      ).catch(() => {});
+                    }
+                  }).catch(() => {});
+                await new Promise(r => setTimeout(r, 600)); // pace: 1 meta fetch per 600ms
+              }
+            } catch (_) {}
+
+            // 2) Pre-fetch trailer if not already in memory cache
+            try {
+              const cacheKey = meta.id;
+              const trailerCached = await cacheGetOnly(cacheKey);
+              if (trailerCached === undefined) {
+                const rawCountry = meta.country;
+                const countryList = Array.isArray(rawCountry)
+                  ? rawCountry : typeof rawCountry === 'string' ? [rawCountry] : [];
+                fetchAccurateTrailer({
+                  title: meta.name,
+                  year: meta.year || new Date().getFullYear(),
+                  originalLang: meta.language || language.split('-')[0] || 'en',
+                  productionCountries: countryList,
+                  stremioId: meta.id,
+                }).catch(() => {});
+                await new Promise(r => setTimeout(r, 400)); // pace: 1 trailer fetch per 400ms
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      })();
+    }
+    // ── End pre-warm ──────────────────────────────────────────────────────────
+
   } catch (e) {
     consola.error(`Error in catalog route for id "${id}" and type "${actualType}":`, e);
     return res.status(500).send("Internal Server Error");
@@ -4205,30 +4263,50 @@ addon.get("/stremio/:userUUID/meta/:type/:id.json", async function (req, res) {
         const { meta: patchedMeta, trailerOverridden } = await applyOverride(redis, stremioId, result.meta);
         result.meta = patchedMeta;
 
-        // Step 2: Only run AI trailer fetch if no manual trailer override exists
         if (!trailerOverridden) {
-          const { fetchAccurateTrailer } = require('./utils/gemini-trailer');
+          const { fetchAccurateTrailer, cacheGetOnly } = require('./utils/gemini-trailer');
           const rawCountry = result.meta.country;
           const countryList = Array.isArray(rawCountry)
             ? rawCountry
             : typeof rawCountry === 'string' ? [rawCountry] : [];
 
-          const accurateYtId = await fetchAccurateTrailer({
+          const trailerParams = {
             title: result.meta.name,
             year: result.meta.year || new Date().getFullYear(),
             originalLang: result.meta.language || 'en',
             productionCountries: countryList,
             stremioId: stremioId,
-          });
+          };
 
-          if (accurateYtId) {
-            result.meta.trailer  = { source: 'youtube', id: accurateYtId };
-            result.meta.trailers = [{ source: accurateYtId, type: 'Trailer' }];
-            console.log(`[Meta Route] AI trailer for "${result.meta.name}": ${accurateYtId}`);
+          // Step 2a: Check the Redis cache with a tight timeout (near-instant)
+          const cacheKey = stremioId || `${result.meta.name}:${trailerParams.year}`;
+          let cachedId;
+          try {
+            cachedId = await Promise.race([
+              cacheGetOnly(cacheKey),
+              new Promise(r => setTimeout(() => r('__timeout__'), 80)),
+            ]);
+          } catch (_) { cachedId = '__timeout__'; }
+
+          if (cachedId !== '__timeout__') {
+            // Cache hit — apply trailer result before responding (instant path)
+            if (cachedId) {
+              result.meta.trailer  = { source: 'youtube', id: cachedId };
+              result.meta.trailers = [{ source: cachedId, type: 'Trailer' }];
+            } else {
+              result.meta.trailer  = null;
+              result.meta.trailers = [];
+            }
+            console.log(`[Meta Route] ⚡ Cached trailer for "${result.meta.name}": ${cachedId ?? 'none'}`);
           } else {
+            // Step 2b: Cache miss — clear TMDB trailers (they are inaccurate),
+            // respond immediately with no trailer, fetch in background so next click is instant.
             result.meta.trailer  = null;
             result.meta.trailers = [];
-            console.log(`[Meta Route] No trailer for "${result.meta.name}" — cleared TMDB trailers`);
+            console.log(`[Meta Route] Cache miss for "${result.meta.name}" — cleared TMDB trailers, fetching in background`);
+            fetchAccurateTrailer(trailerParams).catch(e =>
+              console.error('[Meta Route] Background trailer fetch error:', e)
+            );
           }
         }
       } catch (e) {
