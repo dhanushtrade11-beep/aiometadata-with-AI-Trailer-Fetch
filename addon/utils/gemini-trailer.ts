@@ -265,28 +265,61 @@ const HARD_REJECT = [
   'web series','short film','episode',
 ];
 
+// ─── Title normalization (for robust, punctuation-insensitive matching) ──────
+function normTitle(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 // ─── Score a candidate — higher = better ─────────────────────────────────────
-function scoreCandidate(c: YouTubeCandidate, movieTitle: string, year: number, wantTelugu: boolean): number {
+// primaryTitle = the REAL movie title (always required to match — this is the
+// anchor that prevents picking a trailer for an unrelated movie).
+// altTitle = an alternate-language title (e.g. AI-guessed Telugu dub title).
+// A candidate passes the title gate if it matches EITHER one, but primaryTitle
+// is always checked so a hallucinated/incorrect altTitle can't smuggle through
+// a completely different movie's trailer.
+function scoreCandidate(
+  c: YouTubeCandidate,
+  primaryTitle: string,
+  altTitle: string | null,
+  year: number,
+  wantTelugu: boolean
+): number {
   let score = 0;
   const t = c.title.toLowerCase();
   const ch = c.channelTitle.toLowerCase();
-  const titleLower = movieTitle.toLowerCase();
+  const normT = normTitle(c.title);
+  const normPrimary = normTitle(primaryTitle);
+  const normAlt = altTitle ? normTitle(altTitle) : null;
 
   // Must have "trailer"
   if (!t.includes('trailer')) return -999;
   // Must not have reject words
   if (HARD_REJECT.some(w => t.includes(w))) return -999;
 
+  // HARD GATE: the candidate's title must actually reference this movie —
+  // either the real title or the alt title. No match → reject outright.
+  // This is required even for official/trusted channels: a trusted channel
+  // uploads trailers for MANY movies, so channel trust alone must never be
+  // enough to claim a match.
+  const matchesPrimary = normPrimary.length > 0 && normT.includes(normPrimary);
+  const matchesAlt = !!(normAlt && normAlt.length > 0 && normT.includes(normAlt));
+  if (!matchesPrimary && !matchesAlt) return -999;
+
   // Official channel bonus
   if (isOfficialChannel(c.channelTitle)) score += 50;
   // Telugu channel bonus
   if (wantTelugu && isTeluguChannel(c.channelTitle)) score += 40;
 
-  // Movie title match bonus
-  if (t.includes(titleLower)) score += 30;
+  // Movie title match bonus (already gated above; reward the stronger/real match)
+  if (matchesPrimary) score += 30;
+  else if (matchesAlt) score += 20;
 
   // Year match bonus
   if (t.includes(String(year))) score += 15;
+  // Penalize a different year appearing in the title (likely a different
+  // release/remake/re-edit of the same-titled movie)
+  const yearMatches = t.match(/\b(19|20)\d{2}\b/g);
+  if (yearMatches && !yearMatches.includes(String(year))) score -= 25;
 
   // Telugu language signals in title
   if (wantTelugu) {
@@ -308,12 +341,13 @@ function scoreCandidate(c: YouTubeCandidate, movieTitle: string, year: number, w
 
 function filterAndRank(
   candidates: YouTubeCandidate[],
-  movieTitle: string,
+  primaryTitle: string,
+  altTitle: string | null,
   year: number,
   wantTelugu: boolean
 ): YouTubeCandidate[] {
   return candidates
-    .map(c => ({ ...c, score: scoreCandidate(c, movieTitle, year, wantTelugu) }))
+    .map(c => ({ ...c, score: scoreCandidate(c, primaryTitle, altTitle, year, wantTelugu) }))
     .filter(c => c.score > -999)
     .sort((a, b) => b.score - a.score);
 }
@@ -504,7 +538,7 @@ export async function fetchAccurateTrailer(params: TrailerRequest): Promise<stri
   // Scrape Telugu queries first (parallel)
   console.log(`[Trailer] Scraping ${teluguQueries.length} Telugu queries in parallel...`);
   const teluguRaw = await multiScrape(teluguQueries);
-  const teluguRanked = filterAndRank(teluguRaw, searchTitle, year, true);
+  const teluguRanked = filterAndRank(teluguRaw, title, teluguTitle, year, true);
   console.log(`[Trailer] Telugu: ${teluguRaw.length} raw → ${teluguRanked.length} valid, top score: ${teluguRanked[0]?.score ?? 'none'}`);
 
   let ytId: string | null = null;
@@ -545,7 +579,7 @@ Reply ONLY with the 11-character video ID. If nothing matches: NULL`;
   if (!ytId) {
     console.log(`[Trailer] No Telugu found, scraping ${fallbackQueries.length} fallback queries...`);
     const fallbackRaw = await multiScrape(fallbackQueries);
-    const fallbackRanked = filterAndRank(fallbackRaw, title, year, false);
+    const fallbackRanked = filterAndRank(fallbackRaw, title, null, year, false);
     console.log(`[Trailer] Fallback: ${fallbackRaw.length} raw → ${fallbackRanked.length} valid`);
 
     // High confidence direct pick
