@@ -293,28 +293,28 @@ function normTitle(s: string): string {
   return cleaned.split(' ').map(romanToArabic).join(' ');
 }
 
-// Some movie titles are a single short/numeric token ("29", "96", "83",
-// "1920"). A plain substring check on these is unreliable — "29" will
-// match inside "Streaming from Dec 29" for a completely different movie.
-// For these, require the match to be anchored: either at the very start
-// of the candidate's title, or immediately followed by a trailer-context
-// word. This is the pattern real official trailers use ("29 - Official
-// Trailer...") but incidental number mentions elsewhere don't.
-function isGenericShortTitle(norm: string): boolean {
-  const tokens = norm.split(' ').filter(Boolean);
-  return tokens.length === 1 && (/^[0-9]+$/.test(tokens[0]) || tokens[0].length <= 3);
+// Single-word movie titles ("29", "Dacoit", "Madhuvidhu") are risky to match
+// with a plain substring check, for two different reasons:
+//  - short/numeric ones collide with incidental text ("Dec 29")
+//  - ordinary-length ones can be a SUFFIX of a different real movie's title
+//    ("Dacoit" matching inside "Diamond Dacoit", a different 2026 release)
+// In both cases, requiring the word to appear immediately at the START of
+// the candidate's title reflects how official trailers are actually titled
+// (movie name first, for YouTube SEO) and reliably excludes both failure
+// modes. We deliberately do NOT allow "matched, followed by a context word
+// like trailer/telugu/movie" as an alternative — virtually any trailer's
+// title satisfies that, including ones for a completely different movie
+// that happens to share this word.
+function isSingleWordTitle(norm: string): boolean {
+  return norm.split(' ').filter(Boolean).length === 1;
 }
-
-const TRAILER_CONTEXT_WORDS = ['trailer', 'official', 'movie', 'teaser', 'the', 'malayalam', 'tamil', 'telugu', 'kannada', 'hindi'];
 
 function titleMatches(normT: string, normTarget: string): boolean {
   if (!normTarget) return false;
   const idx = normT.indexOf(normTarget);
   if (idx === -1) return false;
-  if (!isGenericShortTitle(normTarget)) return true;
-  if (idx === 0) return true; // anchored at the very start — strong signal
-  const after = normT.slice(idx + normTarget.length).trim().split(' ')[0] || '';
-  return TRAILER_CONTEXT_WORDS.includes(after);
+  if (!isSingleWordTitle(normTarget)) return true;
+  return idx === 0;
 }
 
 // ─── Score a candidate — higher = better ─────────────────────────────────────
@@ -560,13 +560,21 @@ async function multiScrape(queries: string[]): Promise<YouTubeCandidate[]> {
   return all;
 }
 
+const INDIAN_LANG_NAMES: Record<string, string> = {
+  ml: 'Malayalam', ta: 'Tamil', te: 'Telugu', kn: 'Kannada', hi: 'Hindi',
+  bn: 'Bengali', mr: 'Marathi', gu: 'Gujarati', pa: 'Punjabi', or: 'Odia',
+  as: 'Assamese', ur: 'Urdu',
+};
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 export async function fetchAccurateTrailer(params: TrailerRequest): Promise<string | null> {
   const { title, year, originalLang, productionCountries = [], stremioId } = params;
   const aiKey = process.env.GROQ_API_KEY || null;
 
   const indian = isIndianContent(originalLang, productionCountries);
-  const fallbackLang = indian ? (originalLang?.toUpperCase() || 'Original') : 'English';
+  const fallbackLang = indian
+    ? (INDIAN_LANG_NAMES[originalLang?.toLowerCase()] || 'Original')
+    : 'English';
   const cacheKey = stremioId || `${title}:${year}`;
 
   // ── INSTANT: return from cache if available ───────────────────────────────
@@ -591,6 +599,7 @@ export async function fetchAccurateTrailer(params: TrailerRequest): Promise<stri
     `${searchTitle} Telugu dubbed trailer ${year}`,
     `"${searchTitle}" Telugu trailer ${year}`,
     `"${title}" Telugu movie trailer`,
+    `${title} Telugu trailer`,
   ];
 
   const fallbackQueries = [
