@@ -266,8 +266,28 @@ const HARD_REJECT = [
 ];
 
 // ─── Title normalization (for robust, punctuation-insensitive matching) ──────
+// Movie titles often mix Roman numerals and digits across sources (e.g. a
+// metadata title "Vaazha II" vs. a real trailer titled "Vaazha 2 Trailer").
+// Without reconciling these, a correct trailer can be wrongly rejected.
+function romanToArabic(token: string): string {
+  if (!/^[ivxlcdm]+$/i.test(token) || token.length > 6) return token;
+  const map: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+  const s = token.toLowerCase();
+  // Strict validation: must match standard Roman numeral grammar
+  if (!/^m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/.test(s)) return token;
+  let total = 0;
+  for (let i = 0; i < s.length; i++) {
+    const cur = map[s[i]];
+    const next = map[s[i + 1]];
+    if (next && cur < next) { total -= cur; } else { total += cur; }
+  }
+  return total > 0 && total <= 50 ? String(total) : token;
+}
+
 function normTitle(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const cleaned = s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!cleaned) return cleaned;
+  return cleaned.split(' ').map(romanToArabic).join(' ');
 }
 
 // ─── Score a candidate — higher = better ─────────────────────────────────────
