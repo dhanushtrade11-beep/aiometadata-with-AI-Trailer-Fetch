@@ -341,10 +341,26 @@ function scoreCandidate(
   const yearMatches = t.match(/\b(19|20)\d{2}\b/g);
   if (yearMatches && !yearMatches.includes(String(year))) score -= 25;
 
-  // Telugu language signals in title
+  // OTHER-LANGUAGE GATE: many movies get simultaneous multi-language OTT
+  // trailers (e.g. Sony LIV uploads "X Malayalam Movie Trailer", "X Telugu
+  // Movie Trailer", "X Hindi Movie Trailer" — same title, same channel).
+  // If the candidate explicitly names a different language than the one
+  // we're looking for, it is NOT the trailer we want, regardless of how
+  // well the movie title matches. Reject it outright.
+  const OTHER_LANGS = ['malayalam', 'tamil', 'kannada', 'hindi', 'bengali', 'marathi', 'punjabi'];
+  if (wantTelugu && OTHER_LANGS.some(l => t.includes(l))) return -999;
+
+  // TELUGU LANGUAGE GATE: when explicitly searching for a Telugu version,
+  // the candidate must show SOME positive Telugu signal — either the title
+  // says "Telugu", or it comes from a known Telugu-trusted channel. A bare
+  // title match on the movie name (with no language signal at all) is not
+  // enough evidence this is actually the Telugu version, since the same
+  // generic title is often reused across every language's trailer.
   if (wantTelugu) {
+    const hasTeluguSignal = t.includes('telugu') || isTeluguChannel(c.channelTitle);
+    if (!hasTeluguSignal) return -999;
     if (t.includes('telugu dubbed')) score += 35;
-    if (t.includes('telugu trailer')) score += 30;
+    if (t.includes('telugu trailer') || t.includes('telugu movie trailer')) score += 30;
     if (t.includes('telugu')) score += 20;
   }
 
@@ -493,7 +509,7 @@ async function ytScrape(query: string): Promise<YouTubeCandidate[]> {
       ?.contents?.[0]?.itemSectionRenderer?.contents || [];
     return items
       .filter((i: any) => i?.videoRenderer?.videoId)
-      .slice(0, 10)
+      .slice(0, 15)
       .map((i: any) => ({
         videoId: i.videoRenderer.videoId,
         title: i.videoRenderer.title?.runs?.[0]?.text || '',
@@ -547,6 +563,7 @@ export async function fetchAccurateTrailer(params: TrailerRequest): Promise<stri
     `"${title}" ${year} Telugu dubbed trailer`,
     `${searchTitle} Telugu dubbed trailer ${year}`,
     `"${searchTitle}" Telugu trailer ${year}`,
+    `"${title}" Telugu movie trailer`,
   ];
 
   const fallbackQueries = [
