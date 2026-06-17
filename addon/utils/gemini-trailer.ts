@@ -263,6 +263,9 @@ const HARD_REJECT = [
   'motion poster','title reveal','first look announcement',
   'glimpse','sneak peek',
   'web series','short film','episode',
+  'rage event','event live','live event','launch event',
+  'pre release event','pre-release event','event highlights','event live updates',
+  'live updates','event full video','grand launch','curtain raiser',
 ];
 
 // ─── Title normalization (for robust, punctuation-insensitive matching) ──────
@@ -288,6 +291,30 @@ function normTitle(s: string): string {
   const cleaned = s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   if (!cleaned) return cleaned;
   return cleaned.split(' ').map(romanToArabic).join(' ');
+}
+
+// Some movie titles are a single short/numeric token ("29", "96", "83",
+// "1920"). A plain substring check on these is unreliable — "29" will
+// match inside "Streaming from Dec 29" for a completely different movie.
+// For these, require the match to be anchored: either at the very start
+// of the candidate's title, or immediately followed by a trailer-context
+// word. This is the pattern real official trailers use ("29 - Official
+// Trailer...") but incidental number mentions elsewhere don't.
+function isGenericShortTitle(norm: string): boolean {
+  const tokens = norm.split(' ').filter(Boolean);
+  return tokens.length === 1 && (/^[0-9]+$/.test(tokens[0]) || tokens[0].length <= 3);
+}
+
+const TRAILER_CONTEXT_WORDS = ['trailer', 'official', 'movie', 'teaser', 'the', 'malayalam', 'tamil', 'telugu', 'kannada', 'hindi'];
+
+function titleMatches(normT: string, normTarget: string): boolean {
+  if (!normTarget) return false;
+  const idx = normT.indexOf(normTarget);
+  if (idx === -1) return false;
+  if (!isGenericShortTitle(normTarget)) return true;
+  if (idx === 0) return true; // anchored at the very start — strong signal
+  const after = normT.slice(idx + normTarget.length).trim().split(' ')[0] || '';
+  return TRAILER_CONTEXT_WORDS.includes(after);
 }
 
 // ─── Score a candidate — higher = better ─────────────────────────────────────
@@ -321,8 +348,8 @@ function scoreCandidate(
   // This is required even for official/trusted channels: a trusted channel
   // uploads trailers for MANY movies, so channel trust alone must never be
   // enough to claim a match.
-  const matchesPrimary = normPrimary.length > 0 && normT.includes(normPrimary);
-  const matchesAlt = !!(normAlt && normAlt.length > 0 && normT.includes(normAlt));
+  const matchesPrimary = titleMatches(normT, normPrimary);
+  const matchesAlt = !!(normAlt && titleMatches(normT, normAlt));
   if (!matchesPrimary && !matchesAlt) return -999;
 
   // Official channel bonus
