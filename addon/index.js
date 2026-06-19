@@ -3991,11 +3991,19 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
           const { fetchAccurateTrailer, cacheGetOnly } = require('./utils/gemini-trailer');
           const { reconstructMetaFromComponents } = require('./lib/getCache');
           const metas = responseData.metas.slice(0, 20); // top 20 visible items
-          const metaType = type || 'movie';
           const language = config.language || 'en-US';
 
           for (const meta of metas) {
             if (!meta?.id || !meta?.name) continue;
+
+            // Use this item's OWN real type ('movie'/'series'), not the catalog's
+            // declared type — unified/mixed catalogs report type 'all', which is
+            // not a valid type for getMeta/resolveAllIds and would otherwise make
+            // every pre-warm attempt for these items fail silently, leaving the
+            // cache permanently cold for anything from a unified catalog.
+            const metaType = (meta.type === 'movie' || meta.type === 'series' || meta.type === 'anime')
+              ? meta.type
+              : (type && type !== 'all' ? type : 'movie');
 
             // 1) Check if metadata already cached — if not, pre-fetch it
             try {
