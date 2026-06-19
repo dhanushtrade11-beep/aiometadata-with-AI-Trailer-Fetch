@@ -3982,71 +3982,10 @@ addon.get("/stremio/:userUUID/catalog/:type/:id{/:extra}.json", async function (
     const httpCacheOpts = { cacheMaxAge: 0, staleRevalidate: 5 * 60 }; // No cache for regular catalogs, 5 min stale-while-revalidate
     respond(req, res, responseData, httpCacheOpts);
 
-    // ── Pre-warm metadata + trailers for all catalog items in background ───────
-    // Runs AFTER respond() — user sees catalog instantly.
-    // By the time they click any movie, BOTH metadata and trailer are already cached.
-    if (responseData?.metas?.length > 0) {
-      (async () => {
-        try {
-          const { fetchAccurateTrailer, cacheGetOnly } = require('./utils/gemini-trailer');
-          const { reconstructMetaFromComponents } = require('./lib/getCache');
-          const metas = responseData.metas.slice(0, 20); // top 20 visible items
-          const language = config.language || 'en-US';
 
-          for (const meta of metas) {
-            if (!meta?.id || !meta?.name) continue;
+    // Trailer fetching is on-demand only — triggered when user clicks a movie
+    // (handled in the meta route below). No background pre-fetching here.
 
-            // Use this item's OWN real type ('movie'/'series'), not the catalog's
-            // declared type — unified/mixed catalogs report type 'all', which is
-            // not a valid type for getMeta/resolveAllIds and would otherwise make
-            // every pre-warm attempt for these items fail silently, leaving the
-            // cache permanently cold for anything from a unified catalog.
-            const metaType = (meta.type === 'movie' || meta.type === 'series' || meta.type === 'anime')
-              ? meta.type
-              : (type && type !== 'all' ? type : 'movie');
-
-            // 1) Check if metadata already cached — if not, pre-fetch it
-            try {
-              const cached = await reconstructMetaFromComponents(userUUID, meta.id, undefined, {}, metaType, true, false);
-              if (!cached || !cached.meta) {
-                // Cache miss — fetch full metadata in background (stores to Redis automatically)
-                getMeta(metaType, language, meta.id, config, userUUID, true, true)
-                  .then(result => {
-                    if (result?.meta) {
-                      cacheWrapMetaSmart(
-                        userUUID, meta.id,
-                        async () => result,
-                        undefined, cacheOptions, metaType, true, false
-                      ).catch(() => {});
-                    }
-                  }).catch(() => {});
-                await new Promise(r => setTimeout(r, 600)); // pace: 1 meta fetch per 600ms
-              }
-            } catch (_) {}
-
-            // 2) Pre-fetch trailer if not already in memory cache
-            try {
-              const cacheKey = meta.id;
-              const trailerCached = await cacheGetOnly(cacheKey);
-              if (trailerCached === undefined) {
-                const rawCountry = meta.country;
-                const countryList = Array.isArray(rawCountry)
-                  ? rawCountry : typeof rawCountry === 'string' ? [rawCountry] : [];
-                fetchAccurateTrailer({
-                  title: meta.name,
-                  year: meta.year || new Date().getFullYear(),
-                  originalLang: meta.language || language.split('-')[0] || 'en',
-                  productionCountries: countryList,
-                  stremioId: meta.id,
-                }).catch(() => {});
-                await new Promise(r => setTimeout(r, 400)); // pace: 1 trailer fetch per 400ms
-              }
-            } catch (_) {}
-          }
-        } catch (_) {}
-      })();
-    }
-    // ── End pre-warm ──────────────────────────────────────────────────────────
 
   } catch (e) {
     consola.error(`Error in catalog route for id "${id}" and type "${actualType}":`, e);
