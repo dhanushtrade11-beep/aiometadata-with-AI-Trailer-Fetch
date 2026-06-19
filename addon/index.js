@@ -4204,6 +4204,10 @@ addon.get("/stremio/:userUUID/meta/:type/:id.json", async function (req, res) {
     }*/
     
     // --- TRAILER OVERRIDE (runs after cache, always fresh) ---
+    // On cache hit  → trailer applied instantly before respond().
+    // On cache miss → fetchAccurateTrailer() is awaited in full (not fire-and-forget)
+    //                 so the trailer is fetched, cached, AND applied on the very first
+    //                 click. A 12-second hard timeout guards against slow networks.
     if (result?.meta && (result.meta.type === 'movie' || result.meta.type === 'series')) {
       try {
         // Step 1: Apply manual override from Media Manager (highest priority)
@@ -4225,35 +4229,34 @@ addon.get("/stremio/:userUUID/meta/:type/:id.json", async function (req, res) {
             stremioId: stremioId,
           };
 
-          // Step 2a: Check the Redis cache with a tight timeout (near-instant)
           const cacheKey = stremioId || `${result.meta.name}:${trailerParams.year}`;
-          let cachedId;
-          try {
-            cachedId = await Promise.race([
-              cacheGetOnly(cacheKey),
-              new Promise(r => setTimeout(() => r('__timeout__'), 80)),
-            ]);
-          } catch (_) { cachedId = '__timeout__'; }
 
-          if (cachedId !== '__timeout__') {
-            // Cache hit — apply trailer result before responding (instant path)
-            if (cachedId) {
-              result.meta.trailer  = { source: 'youtube', id: cachedId };
-              result.meta.trailers = [{ source: cachedId, type: 'Trailer' }];
-            } else {
-              result.meta.trailer  = null;
-              result.meta.trailers = [];
-            }
-            console.log(`[Meta Route] ⚡ Cached trailer for "${result.meta.name}": ${cachedId ?? 'none'}`);
+          // Step 2: Check in-memory cache first (truly instant — no network)
+          let ytId = await cacheGetOnly(cacheKey);
+
+          if (ytId === undefined) {
+            // Cache miss — await the full fetch so trailer is ready on THIS click.
+            // Hard timeout: 12 s (covers Groq queue + 2× parallel YT scrape rounds).
+            // If it times out, respond without trailer — next click will be instant
+            // because the in-flight fetch still completes and populates the cache.
+            console.log(`[Meta Route] Cache miss — awaiting trailer fetch for "${result.meta.name}"…`);
+            try {
+              ytId = await Promise.race([
+                fetchAccurateTrailer(trailerParams),
+                new Promise(r => setTimeout(() => r(null), 5000)),  // 5s max wait on first click
+              ]);
+            } catch (_) { ytId = null; }
+          }
+
+          // Apply result
+          if (ytId) {
+            result.meta.trailer  = { source: 'youtube', id: ytId };
+            result.meta.trailers = [{ source: ytId, type: 'Trailer' }];
+            console.log(`[Meta Route] ✓ Trailer for "${result.meta.name}": ${ytId}`);
           } else {
-            // Step 2b: Cache miss — clear TMDB trailers (they are inaccurate),
-            // respond immediately with no trailer, fetch in background so next click is instant.
             result.meta.trailer  = null;
             result.meta.trailers = [];
-            console.log(`[Meta Route] Cache miss for "${result.meta.name}" — cleared TMDB trailers, fetching in background`);
-            fetchAccurateTrailer(trailerParams).catch(e =>
-              console.error('[Meta Route] Background trailer fetch error:', e)
-            );
+            console.log(`[Meta Route] ✗ No trailer resolved for "${result.meta.name}"`);
           }
         }
       } catch (e) {
