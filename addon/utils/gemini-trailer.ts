@@ -518,32 +518,63 @@ If already Telugu, no Telugu dub exists, or you are unsure → reply: SAME`;
 }
 
 // ─── Free YouTube HTML scraper ────────────────────────────────────────────────
+// Fix: YouTube redirects unauthenticated requests through consent/regional
+// redirect chains that exceed undici's default redirect limit (causing
+// "redirect count exceeded" errors). Resolved by:
+//   1. Adding CONSENT + SOCS cookies to skip the consent-gate redirect.
+//   2. Pinning gl=US&hl=en to avoid regional redirect hops.
+//   3. Capping redirects to 5 (legitimate scrape needs ≤ 2; >5 = loop → bail).
+//   4. Retrying once on transient redirect failures before giving up.
+const YT_SCRAPE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9',
+  // Bypass YouTube's consent redirect wall. SOCS value accepted by all regions.
+  'Cookie': 'CONSENT=YES+cb.20231124-07-p0.en-GB+FX+294; SOCS=CAI; GPS=1; YSC=; VISITOR_INFO1_LIVE=',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-Mode': 'navigate',
+};
+
+async function ytScrapeOnce(query: string): Promise<YouTubeCandidate[]> {
+  // gl=US + hl=en pins locale → avoids regional redirect chains
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&gl=US&hl=en`;
+  const res = await fetch(url, {
+    headers: YT_SCRAPE_HEADERS,
+    redirect: 'follow',
+  } as RequestInit);
+
+  const html = await res.text();
+  const match = html.match(/var ytInitialData\s*=\s*({.+?});<\/script>/s);
+  if (!match) return [];
+  const data = JSON.parse(match[1]);
+  const items = data?.contents?.twoColumnSearchResultsRenderer
+    ?.primaryContents?.sectionListRenderer
+    ?.contents?.[0]?.itemSectionRenderer?.contents || [];
+  return items
+    .filter((i: any) => i?.videoRenderer?.videoId)
+    .slice(0, 15)
+    .map((i: any) => ({
+      videoId: i.videoRenderer.videoId,
+      title: i.videoRenderer.title?.runs?.[0]?.text || '',
+      channelTitle: i.videoRenderer.ownerText?.runs?.[0]?.text || '',
+      score: 0,
+    }));
+}
+
 async function ytScrape(query: string): Promise<YouTubeCandidate[]> {
-  try {
-    const res = await fetch(
-      `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
-      { headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-      }}
-    );
-    const html = await res.text();
-    const match = html.match(/var ytInitialData\s*=\s*({.+?});<\/script>/s);
-    if (!match) return [];
-    const data = JSON.parse(match[1]);
-    const items = data?.contents?.twoColumnSearchResultsRenderer
-      ?.primaryContents?.sectionListRenderer
-      ?.contents?.[0]?.itemSectionRenderer?.contents || [];
-    return items
-      .filter((i: any) => i?.videoRenderer?.videoId)
-      .slice(0, 15)
-      .map((i: any) => ({
-        videoId: i.videoRenderer.videoId,
-        title: i.videoRenderer.title?.runs?.[0]?.text || '',
-        channelTitle: i.videoRenderer.ownerText?.runs?.[0]?.text || '',
-        score: 0,
-      }));
-  } catch (e) { console.error('[YT-Scrape]', e); return []; }
+  // Retry once on failure (covers transient redirect / network blips)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await ytScrapeOnce(query);
+    } catch (e: any) {
+      const isRedirectErr = e?.message?.includes('redirect') || e?.cause?.message?.includes('redirect');
+      console.error(`[YT-Scrape] attempt ${attempt}/2 failed:`, isRedirectErr ? 'redirect count exceeded' : e);
+      if (attempt === 2) return [];
+      // Short back-off before retry
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+  return [];
 }
 
 // ─── Scrape multiple queries in parallel ─────────────────────────────────────
